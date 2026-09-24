@@ -1,0 +1,58 @@
+---
+title: "Solar Detection & Income"
+format: html
+editor: visual
+---
+
+### Libraries
+
+```{r}
+library(tidyverse)
+library(here)
+library(sf)
+library(mapview)
+library(tidycensus)
+```
+
+### Read in the data
+
+```{r}
+oahu_solar <- st_read(here("data/oahu_solar_dedup_simple.geojson"))
+```
+
+### Map the solar data
+
+```{r}
+mapview(oahu_solar)
+```
+
+### Retrieve some census data
+
+```{r}
+oahu_median_household_income <- get_acs(geography = "tract",
+ variable = "B19013_001",
+ state = "HI",
+ county = "Honolulu",
+ geometry = TRUE,
+ year = 2022)
+```
+
+```{r}
+mapview(oahu_median_household_income, zcol = "moe")
+```
+
+```{r}
+ggplot(oahu_median_household_income, aes(x = moe, y = estimate)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+
+- package is sf, language is R,
+
+- head() of two datasets
+
+- please the identify the best function(s) from sf
+
+- Goal is to answer the question: "Is there a relationship/correlation between median income and solar infrastructure at the census tract level
+
+- 
