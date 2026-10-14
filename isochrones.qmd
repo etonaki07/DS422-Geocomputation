@@ -67,16 +67,164 @@ nike_map %>%
   addMarkers(lng = nike_hq[1], lat = nike_hq[2], icon = nike_icon)
 ```
 
-### Your turn - Recreate for Chaminade
+### Lets go further
+
+Question: Can we make an accessibility surfaces map for trauma centers, ER's, hospitals, fire stations etc. Maybe combine all of them into one shiny app. Let's strategise and design..
+
+### Recreate for Chaminade
+
+Scenario: During a Hurricane/bad storm, how long does it take for first-responders to get to their locations and to the hospitals? What affect do traffic time zones and flood elevation lines have on drive time?
 
 ```{r}
+campus <- mb_geocode(
+  "3140 Waialae Avenue, Honolulu, HI 96816",
+  output = "sf"
+)
 
+campus <- st_transform(campus, 4326)
 ```
 
 ```{r}
-
+mapview(campus)
 ```
 
-### Lets go further 
+```{r}
+travel_times <- c(5, 10, 15, 30, 45)
+isos <- mb_isochrone(
+  location = campus,
+  profile = "driving",
+  time = travel_times)
+isos <- st_transform(st_make_valid(isos), 4326)
+```
 
-Question: Can we make an accessibility surfaces map for trauma centers, ER's, hospitals, fire stations etc. Maybe combine all of them into one shiny app. Let's strategise and design...
+```{r}
+taz <- st_read(
+  "data/Traffic_Analysis_Zones_(TAZ)_-_Oahu.geojson",
+  quiet = TRUE)
+
+hospitals <- st_read(
+  "data/Hospitals.geojson",
+  quiet = TRUE)
+
+flood_lines <- st_read(
+  "data/flood_elevation_lines.geojson",
+  quiet = TRUE)
+
+taz <- st_transform(st_make_valid(taz), 4326)
+hospitals <- st_transform(hospitals, 4326)
+flood_lines <- st_transform(
+  st_make_valid(flood_lines),
+  4326)
+```
+
+These are the Geojson files I downloaded from opendata.hawaii.gov and geoportal.hawaii.gov that hold data on traffic zones, flood elevation lines, and hospitals located in Hawaii.
+
+```{r}
+oahu_area <- st_union(taz)
+hospitals <- hospitals[
+  lengths(st_intersects(hospitals, oahu_area)) > 0,]
+flood_lines <- st_intersection(
+  flood_lines,
+  oahu_area)
+
+isos_oahu <- st_intersection(
+  isos,
+  oahu_area)
+
+isos_oahu <- isos_oahu[
+  order(isos_oahu$time, decreasing = TRUE),]
+```
+
+I then narrowed the data down to list only on the island of 'Oahu and made larger zones before I made the smaller ones.
+
+```{r}
+hospitals$popup <- paste0(
+  "<b>", hospitals$name, "</b>",
+  "<br>Type: ", hospitals$facilitytype_name,
+  "<br>Address: ", hospitals$address_addressline1,
+  "<br>City: ", hospitals$address_addresscity,
+  "<br>Phone: ", hospitals$contact_businessprimaryphone)
+pal <- colorNumeric(
+  palette = "viridis",
+  domain = travel_times)
+```
+
+```{r}
+hospital_map <- leaflet() %>%
+  
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  
+  fitBounds(
+    lng1 = -158.30,
+    lat1 = 21.20,
+    lng2 = -157.60,
+    lat2 = 21.75) %>%
+
+  addPolygons(
+    data = oahu_area,
+    color = "#ffffcc",
+    weight = 1,
+    fillColor = "#a1dab4",
+    fillOpacity = 0.35,
+    group = "Oahu study area") %>%
+  addPolygons(
+    data = isos_oahu,
+    fillColor = ~pal(time),
+    fillOpacity = 0.85,
+    color = "#ffffb2",
+    weight = 0.7,
+    label = ~paste("Within", time, "minutes from Chaminade"),
+    group = "Driving time zones") %>%
+  addPolylines(
+    data = flood_lines,
+    color = "#0077b6",
+    weight = 2,
+    opacity = 0.9,
+    label = ~paste("Flood elevation:", elev, len_unit),
+    popup = ~paste0(
+      "Elevation: ", elev, " ", len_unit,
+      "<br>Vertical datum: ", v_datum),
+    group = "Flood elevation lines") %>%
+  addCircleMarkers(
+    data = hospitals,
+    radius = 6,
+    color = "white",
+    weight = 1,
+    fillColor = "#253494",
+    fillOpacity = 1,
+    label = ~name,
+    popup = ~popup,
+    group = "Hospitals") %>%
+  
+  addLegend(
+    position = "bottomright",
+    colors = pal(travel_times),
+    labels = paste(travel_times, "minutes"),
+    title = "Baseline driving time<br>from Chaminade") %>%
+  addLegend(
+    position = "bottomleft",
+    colors = c("#253494", "#0077b6"),
+    labels = c("Hospitals", "Flood elevation lines"),
+    title = "Map features") %>%
+  addLayersControl(
+    overlayGroups = c(
+      "Oahu study area",
+      "Driving time zones",
+      "Flood elevation lines",
+      "Hospitals"),
+    options = layersControlOptions(collapsed = FALSE)) %>%
+  
+  addScaleBar(position = "bottomleft")
+```
+
+```{r}
+hospital_map
+```
+
+### Look into:
+
+- Which Oʻahu communities have limited baseline access to emergency departments?
+
+- Which connecting roads intersect mapped flood hazard areas?
+
+- How does estimated accessibility from Chaminade differ between morning, afternoon, and lower traffic periods, and which Oʻahu traffic zones have the least coverage?
