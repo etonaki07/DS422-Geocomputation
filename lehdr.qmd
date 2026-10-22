@@ -4,7 +4,7 @@ format: html
 editor: visual
 ---
 
-### Welcome 
+### Welcome
 
 This is our Geocomputation lab on Employer-Household Dynamics. This is an R analysis [inspired by this post](https://walker-data.com/posts/lodes-2020/)
 
@@ -18,6 +18,8 @@ library(sf)
 library(dplyr)
 library(purrr)
 library(mapview)
+library(ggplot2)
+library(scales)
 options(tigris_use_cache = TRUE)
 ```
 
@@ -52,7 +54,7 @@ What do these column names mean?
 Each row is one home-tract-to-work-tract pair. The numbers count **jobs** (in your call, `JT00` means all jobs), so a person with two jobs can appear twice.
 
 | Column | Meaning |
-|----|----|
+|------------------------------------|------------------------------------|
 | `year` | Data year (2022) |
 | `state` | State abbreviation |
 | `w_tract` | GEOID of the **work** tract |
@@ -192,8 +194,120 @@ m <- maplibre(
 m
 ```
 
-### Your Turn 
+### Your Turn
 
 Challenge 1: Recreate [this figure](https://github.com/jamgreen/lehdr/blob/master/vignettes/figures/fig1_balt_self_containment.png) for Hawaii
 
+```{r}
+od_hi <- grab_lodes(
+  state      = "hi",
+  year       = 2022,
+  lodes_type = "od",
+  job_type   = "JT00",
+  segment    = "S000",
+  state_part = "main",
+  agg_geo    = "tract"
+)
+```
+
+```{r}
+commute_hi <- compute_commute_stats(od_hi, agg_geo = "tract")
+```
+
+```{r}
+hi_geo <- tracts(state = "HI", county = "honolulu" , year = 2022, cb = TRUE) %>%
+  select(GEOID, geometry)
+```
+
+```{r}
+commute_map_df <- hi_geo %>%
+  left_join(commute_hi, by = c("GEOID" = "tract"))
+```
+
+```{r}
+mapview(commute_map_df, zcol = "self_containment")
+```
+
+```{r}
+fig1 <- ggplot(commute_map_df) +
+  geom_sf(aes(fill = self_containment), color = "white", linewidth = 0.2) +
+  scale_fill_distiller(
+    palette  = "YlOrRd",
+    direction = 1,
+    name     = "Self-\ncontainment",
+    labels   = label_percent(accuracy = 1),
+    na.value = "grey85"
+  ) +
+  labs(
+    title    = "Worker self-containment, Honolulu County",
+    subtitle = "Share of employed residents who also work within the same Census tract",
+    caption  = "Source: U.S. Census Bureau LODES 2022 via lehdr",
+    x = "",
+    y = ""
+  ) +
+  theme_minimal()
+```
+
+```{r}
+fig1
+```
+
 Challenge 2: Recreate t[his figure](https://github.com/jamgreen/lehdr/blob/master/vignettes/figures/fig2_md_job_change.png) for a state of your choosing
+
+```{r}
+wac_tx_panel <- grab_lodes(
+  state      = "tx",
+  year       = c(2015, 2022),
+  lodes_type = "wac",
+  job_type   = "JT00",
+  segment    = "S000",
+  agg_geo    = "county"
+)
+```
+
+```{r}
+change_tx <- compute_lodes_change(
+  wac_tx_panel,
+  geo_col      = "w_county",
+  base_year    = 2015,
+  compare_year = 2022,
+  variables    = "C000"
+)
+```
+
+```{r}
+tx_county_geo <- counties(state = "TX", year = 2022, cb = FALSE) %>%
+  mutate(GEOID = paste0(STATEFP, COUNTYFP)) %>%
+  select(GEOID, geometry)
+```
+
+```{r}
+change_map_df <- tx_county_geo %>%
+  left_join(change_tx, by = c("GEOID" = "w_county"))
+```
+
+```{r}
+mapview(change_map_df)
+```
+
+```{r}
+fig2 <- ggplot(change_map_df) +
+  geom_sf(aes(fill = C000_pct_change), color = "white", linewidth = 0.3) +
+  scale_fill_distiller(
+    palette   = "RdYlBu",
+    direction = 1,
+    name      = "% change",
+    labels    = label_percent(accuracy = 1, scale = 1),
+    na.value  = "grey85"
+  ) +
+  labs(
+    title    = "Job growth by county, Texas, 2015\u20132022",
+    subtitle = "Percent change in total jobs (WAC, all job types)",
+    caption  = "Source: U.S. Census Bureau LODES via lehdr"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+fig2
+```
